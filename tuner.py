@@ -19,15 +19,65 @@ from sklearn.metrics import mean_absolute_error as mae
 
 import optuna
  
-class Strojenie():
+class Tuning():
+    """
+    The Tuning class is responsible for tuning regression models using various methods of data transformation, 
+    decomposition, and hyperparameter tuning with Optuna.
     
+    Attributes
+    ----------
+    X_train : pandas.DataFrame
+        Training data for the predictors.
+    X_test : pandas.DataFrame
+        Testing data for the predictors.
+    y_train : pandas.Series or numpy.ndarray
+        Training data for the target values.
+    y_test : pandas.Series or numpy.ndarray
+        Testing data for the target values.
+    """
     def __init__(self,X_train, X_test,y_train,y_test):
+        """
+        Initializes the Tuning class with training and testing data.
+
+        Parameters
+        ----------
+        X_train : pandas.DataFrame
+            Training data for the predictors.
+        X_test : pandas.DataFrame
+            Testing data for the predictors.
+        y_train : pandas.Series or numpy.ndarray
+            Training data for the target values.
+        y_test : pandas.Series or numpy.ndarray
+            Testing data for the target values.
+        """
+        
         self.X_train = X_train
         self.X_test =  X_test
         self.y_train = y_train
         self.y_test = y_test
         
     def create_pipe(self,regressor,transformer,decomposition,targetTransformer,**_params):
+        """
+    Creates a pipeline for data processing and regression model with optional transformation and decomposition steps.
+
+    Parameters
+    ----------
+    regressor : Estimator
+        The regressor to be used in the pipeline.
+    transformer : Class or None
+        The data transformation class, such as StandardScaler, MinMaxScaler. Can be None if no transformation is needed.
+    decomposition : Class or None
+        The class for dimensionality reduction, such as PCA, FastICA. Can be None if dimensionality reduction is not required.
+    targetTransformer : Class or None
+        The transformation for target values. Can be None if no transformation is required.
+    **_params : dict
+        Parameters for each step in the pipeline, such as transformer, decomposition, and regressor.
+
+    Returns
+    -------
+    Pipeline
+        Returns a pipeline object containing the data processing steps and regression model.
+    """
         transformer_params = _params.get("transformer_params",{})
         decomposition_params = _params.get("decomposition_params",{})
         regressor_params = _params.get("regresor_params",{})
@@ -44,8 +94,32 @@ class Strojenie():
             steps.append(('regressor',regressor(**regressor_params)))
         return Pipeline(steps)
                     
-    def strojenie(self,evaluation=mae,storage = f"sqlite:///optuna_study.db",study_name = f"Study_{date.today()}",direction='minimize',n_trials = 100):
-        
+    def tuning(self,evaluation=mae,storage = f"sqlite:///optuna_study.db",study_name = f"Study_{date.today()}",direction='minimize',n_trials = 100):
+        """
+        Performs regression model tuning using Optuna.
+
+        Parameters
+        ----------
+        evaluation : function, default mean_absolute_error
+            Function used to evaluate the model performance.
+        storage : str, default "sqlite:///optuna_study.db"
+            Path to the Optuna database.
+        study_name : str, default "Study_{current_date}"
+            Name of the Optuna study.
+        direction : str, default 'minimize'
+            Optimization direction ('minimize' or 'maximize').
+        n_trials : int, default 100
+            Number of tuning trials.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            Raises an error if issues occur during tuning.
+        """
         def objective(trial):
             
             # Wybór regressora
@@ -197,6 +271,33 @@ class Strojenie():
         self.best_params = study.best_params
 
     def build_best_model(self):
+        """
+        Builds the best model based on the parameters obtained from the Optuna tuning process.
+
+        This method uses the best parameters stored in the `self.best_params` attribute to create a pipeline 
+        with a regressor, transformer, decomposition technique, and target transformer. The pipeline is then 
+        configured with the parameters that were found to be optimal during the tuning process.
+
+        Returns
+        -------
+        Pipeline
+            A scikit-learn pipeline object that includes the best regressor, data transformations, 
+            dimensionality reduction, and target value transformation steps.
+
+        Raises
+        ------
+        AttributeError
+            If the tuning process has not been run and `self.best_params` is not set, an AttributeError is raised.
+
+        Notes
+        -----
+        - The method first identifies the types of regressor, transformer, decomposition, and target transformer 
+        based on the best parameters obtained from the Optuna study.
+        - It constructs a dictionary of parameters for each component of the pipeline, such as the regressor's 
+        hyperparameters, transformer settings, decomposition configuration, and target transformer parameters.
+        - The method calls `self.create_pipe` to assemble the pipeline using the specified components and their 
+        corresponding parameters.
+        """
         try:
             bp = self.best_params
             regressor_name = bp['regressor']            
@@ -260,6 +361,7 @@ class Strojenie():
                             targetTransformer_params = targetTransformer_params)
             
             model = self.create_pipe(regressor,transformer,decomposition,targetTransformer,**params)
+            model.fit(self.X_train,self.y_train)
             return model
         except AttributeError as a:
             print("Tuning haven't be runed. There are no the best parameters")
